@@ -2675,6 +2675,9 @@ AntiAimBox:AddToggle("DesyncEnabled", {
 
 	Callback = function(Value)
 		getgenv().matcha.Desync.Enabled = Value
+        if not Value then
+            resetCamera()
+        end
 	end,
 }):AddKeyPicker("DesyncKeybind", {
 	Default = "V",
@@ -2684,6 +2687,9 @@ AntiAimBox:AddToggle("DesyncEnabled", {
 
 	Callback = function(Value)
 		getgenv().matcha.Desync.Enabled = Value
+        if not Value then
+            resetCamera()
+        end
 	end,
 })
 
