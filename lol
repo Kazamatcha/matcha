@@ -96,13 +96,7 @@ getgenv().matcha = {
     SelectedTarget = nil,
     TriggerbotEnabled = false,
     TriggerFOV = 20,
-    OnlyTarget = false,
-    TriggerCheckWall = false,
-    TriggerCheckKO = false,
-    TriggerCheckKnife = false,
-    TriggerCheckGrab = false,
-    TriggerCheckTeam = false,
-    TriggerCheckFriend = false,
+    TriggerChecks = {},
     TriggerDelay = 1,
     Enabledboost = false,
     WalkSpeed = 16,
@@ -518,16 +512,21 @@ end
 
 local function isValidTriggerTarget(plr)
     if plr == LocalPlayer then return false end
-    if getgenv().matcha.OnlyTarget and plr ~= getgenv().matcha.SelectedTarget then return false end
-    if getgenv().matcha.TriggerCheckTeam and plr.Team == LocalPlayer.Team then return false end
-    if getgenv().matcha.TriggerCheckFriend and LocalPlayer:IsFriendsWith(plr.UserId) then return false end
-    if getgenv().matcha.TriggerCheckKO and isKO(plr) then return false end
-    if getgenv().matcha.TriggerCheckGrab and plr.Character:FindFirstChild("BodyEffects") and plr.Character.BodyEffects:FindFirstChild("GRABBING_CONSTRAINT") and plr.Character.BodyEffects.GRABBING_CONSTRAINT.Value then return false end
-    if getgenv().matcha.TriggerCheckWall and not canSeeThroughWall(LocalPlayer, plr) then return false end
-    if getgenv().matcha.TriggerCheckKnife and isHoldingKnife() then return false end
+
+    local c = getgenv().matcha.TriggerChecks
+
+    if table.find(c, "Only Target") and plr ~= getgenv().matcha.SelectedTarget then return false end
+    if table.find(c, "Team")       and plr.Team == LocalPlayer.Team then return false end
+    if table.find(c, "Friend")     and LocalPlayer:IsFriendsWith(plr.UserId) then return false end
+    if table.find(c, "KO")         and isKO(plr) then return false end
+    if table.find(c, "Grab")       and plr.Character:FindFirstChild("BodyEffects") 
+                                   and plr.Character.BodyEffects:FindFirstChild("GRABBING_CONSTRAINT") 
+                                   and plr.Character.BodyEffects.GRABBING_CONSTRAINT.Value then return false end
+    if table.find(c, "Wall")       and not canSeeThroughWall(LocalPlayer, plr) then return false end
+    if table.find(c, "Knife")      and isHoldingKnife() then return false end
+
     return isAlive(plr)
 end
-
 local function distToCursor(part)
     local v, vis = Camera:WorldToViewportPoint(part.Position)
     if not vis then return math.huge end
@@ -1255,28 +1254,13 @@ Triggerbot:AddToggle("TriggerbotEnabled", {
     end
 })
 
--- Dropdown: Checks (multi)
 Triggerbot:AddDropdown("TriggerChecks", {
     Text = "Checks",
-    Values = {"Wall", "Knife", "Alive", "Friend", "Team"},
+    Values = {"Only Target", "Team", "Friend", "KO", "Grab", "Wall", "Knife"},
     Default = {},
     Multi = true,
     Callback = function(selected)
-        getgenv().matcha.TriggerCheckWall   = table.find(selected, "Wall") and true or false
-        getgenv().matcha.TriggerCheckKnife  = table.find(selected, "Knife") and true or false
-        getgenv().matcha.TriggerCheckKO     = table.find(selected, "Alive") and true or false
-        getgenv().matcha.TriggerCheckFriend = table.find(selected, "Friend") and true or false
-        getgenv().matcha.TriggerCheckTeam   = table.find(selected, "Team") and true or false
-        getgenv().matcha.TriggerCheckGrab   = false -- not included in dropdown
-    end
-})
-
--- Toggle: Only Target
-Triggerbot:AddToggle("OnlyTarget", {
-    Text = "Only Target",
-    Default = false,
-    Callback = function(Value)
-        getgenv().matcha.OnlyTarget = Value
+        getgenv().matcha.TriggerChecks = selected
     end
 })
 
