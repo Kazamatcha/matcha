@@ -3135,7 +3135,30 @@ SaveManager:SetLibrary(Library)
 SaveManager:IgnoreThemeSettings()
 SaveManager:SetIgnoreIndexes({ "MenuKeybind" })
 
-ThemeManager:SetFolder("MyScriptHub")
+ThemeManager:SetFolder("Matcha")
+local themeFolder = ThemeManager.Folder .. "\\themes"
+
+-- Đảm bảo folder themes tồn tại
+if not isfolder(themeFolder) then
+    makefolder(themeFolder)
+end
+
+-- Tạo default.txt nếu chưa có
+if not isfile(themeFolder .. '/default.txt') then
+    writefile(themeFolder .. '/default.txt', 'matcha.json')
+end
+
+-- Matcha theme (green tones)
+if not isfile(themeFolder .. '/matcha.json') then
+    local themeData = {
+        MainColor = "1e1e1e",         -- Dark background
+        AccentColor = "98fb98",        -- Pale green
+        OutlineColor = "141414",       -- Dark outline
+        BackgroundColor = "232323",    -- Medium dark
+        FontColor = "e0ffff"           -- Light cyan for text
+    }
+    writefile(themeFolder .. '/matcha.json', game:GetService("HttpService"):JSONEncode(themeData))
+end
 SaveManager:SetFolder("Matcha/Universal")
 SaveManager:SetSubFolder("Universal") 
 
