@@ -944,6 +944,7 @@ triggerS:slider({name = "Delay", min = 0, max = 0.5, default = 0, interval = 0.0
 -- ===== AIMBOT MAIN LOOP =====
 RunService.RenderStepped:Connect(function()
     updatePredictionValue()
+    if not ToggleAimbot1 then return end 
 
     local mousePos = UserInputService:GetMouseLocation()
     local centerPos = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
@@ -1019,7 +1020,7 @@ RunService.RenderStepped:Connect(function()
     local basePosition = targetPart.Position + Vector3.new(0, inFreefall and getgenv().matcha.JumpOffset or getgenv().matcha.Offset, 0)
     local aimPosition = basePosition + predictionOffset
 
-    -- Aimbot Logic
+    if not ToggleAimbot then return end 
     if getgenv().matcha.AimMethod == "camera" then
         local goalCFrame = CFrame.new(Camera.CFrame.Position, aimPosition)
         if getgenv().matcha.SmoothingEnabled then
