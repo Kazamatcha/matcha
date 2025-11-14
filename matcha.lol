@@ -1,4 +1,65 @@
+if not game:IsLoaded() then 
+    game.Loaded:Wait()
+end
 
+if not syn or not protectgui then
+    getgenv().protectgui = function() end
+end
+
+task.spawn(function()
+	local g = getinfo or debug.getinfo
+	local d = false
+	local h = {}
+
+	local x, y
+
+	setthreadidentity(2)
+
+	for i, v in getgc(true) do
+		if typeof(v) == "table" then
+			local a = rawget(v, "Detected")
+			local b = rawget(v, "Kill")
+		
+			if typeof(a) == "function" and not x then
+				x = a
+				local o; o = hookfunction(x, function(c, f, n)
+					if c ~= "_" then
+						if d then
+						end
+					end
+					
+					return true
+				end)
+				table.insert(h, x)
+			end
+
+			if rawget(v, "Variables") and rawget(v, "Process") and typeof(b) == "function" and not y then
+				y = b
+				local o; o = hookfunction(y, function(f)
+					if d then
+					end
+				end)
+				table.insert(h, y)
+			end
+		end
+	end
+
+	local o; o = hookfunction(getrenv().debug.info, newcclosure(function(...)
+		local a, f = ...
+
+		if x and a == x then
+			if d then
+				warn(`zins | adonis bypassed`)
+			end
+
+			return coroutine.yield(coroutine.running())
+		end
+		
+		return o(...)
+	end))
+
+	setthreadidentity(7)
+end)
 local Services = {
     Workspace = game:GetService("Workspace"),
     Players = game:GetService("Players"),
@@ -617,7 +678,6 @@ end)
 -- Silent Aim Vars
 local silentAimEnabled = false
 local silentPrediction = 0
-local silentAutoPrediction = false
 local silentPreviousPrediction = 0
 local silentHitPart = "Head"
 local silentFOVEnabled = false
@@ -722,17 +782,6 @@ local function getClosestTarget()
     return closest
 end
 
-local function CalculateAutoPrediction(target)
-    if not target or not target.Character or not target.Character:FindFirstChild("HumanoidRootPart") then 
-        return 0.1 
-    end
-    local ping = math.clamp(game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue() / 1000, 0.01, 1)
-    local root = target.Character.HumanoidRootPart
-    local velocity = root.AssemblyLinearVelocity.Magnitude
-    local distance = (root.Position - Camera.CFrame.Position).Magnitude
-    local predicted_time = (distance / math.max(velocity, 1)) * 0.04 + ping * 0.3
-    return math.clamp(predicted_time, 0.03, 0.4)
-end
 -- Hook metatable
 if mtSupport then
     local oldIndex
@@ -757,7 +806,7 @@ if mtSupport then
             if not targetPart then return oldIndex(self, idx) end
             local root = char:FindFirstChild("HumanoidRootPart")
             if not root then return oldIndex(self, idx) end
-            local pred = silentAutoPrediction and CalculateAutoPrediction(lockedTarget) or silentPrediction
+            local pred = silentPrediction
             local predPos = targetPart.Position + root.AssemblyLinearVelocity * pred
             if freefall and silentJumpOffset ~= 0 then predPos = predPos + Vector3.new(0, silentJumpOffset, 0) end
             if idx == "Hit" then return CFrame.new(predPos) elseif idx == "Target" then return targetPart end
@@ -917,7 +966,6 @@ else
     silentS:toggle({name = "Check Team", callback = function(v) silentTeamCheck = v end})
     silentS:toggle({name = "Check Wall", callback = function(v) silentWallCheck = v end})
     silentS:textbox({name = "Prediction", default = "0", numeric = true, callback = function(v) local num = tonumber(v) if num and num >= 0 and num <= 0.2 then silentPrediction = num end end})
-    silentS:toggle({name = "Auto Prediction", callback = function(v) silentAutoPrediction = v if v then silentPreviousPrediction = silentPrediction else silentPrediction = silentPreviousPrediction end end})
     silentS:dropdown({name = "Hit Part", items = {"Head", "HumanoidRootPart", "UpperTorso", "LowerTorso", "Torso"}, default = "Head", callback = function(v) silentHitPart = v end})
     silentS:toggle({name = "FOV Circle", callback = function(v) silentFOVEnabled = v silentFOVCircle.Visible = v silentOutlineCircle.Visible = v end})
     silentS:colorpicker({name = "FOV Color", callback = function(c) silentFOVColor = c silentFOVCircle.Color = c end})
