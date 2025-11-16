@@ -123,7 +123,7 @@ getgenv().matcha = {
     UseFOV = false,
     targeting = false
 }
-
+local lastLockedTarget = nil
 local Stats = game:GetService("Stats")
 local lastNotifiedTarget = nil
 local targeting = false
@@ -452,7 +452,7 @@ local function isValidTarget(plr)
     end
 
     if teamCheckEnabled and plr.Team == LocalPlayer.Team then return false end
-    if friendCheckEnabled then 
+    if friendCheckEnabled and LocalPlayer:IsFriendsWith(plr.UserId) then
         return false
     end
 
@@ -552,7 +552,7 @@ local page = rageTab:sub_tab({size = 25})
 local leftCol = page:column({})
 local aimSec = leftCol:section({name = "Target System", default = true})
 
-local targetLockT = aimSec:toggle({name = "Target Lock", seperator = true, callback = function(v) targetLockEnabled = v if not v then lockedTarget = nil end end})
+local targetLockT = aimSec:toggle({name = "Target Lock", seperator = true, callback = function(v) targetLockEnabled = v if not v then clearTarget() end end})
 local ts = targetLockT:settings({})
 ts:toggle({name = "Check Alive", callback = function(v) aliveCheckEnabled = v end})
 ts:toggle({name = "Check Wall", callback = function(v) wallCheckEnabled = v end})
@@ -612,7 +612,70 @@ local function resetCamera()
         end
     end
 end
+local RapidFireEnabled = false
+local originalCooldowns = {}
 
+local utility = {}
+utility.get_gun = function()
+    local char = LocalPlayer.Character
+    if not char then return nil end
+    for _, tool in ipairs(char:GetChildren()) do
+        if tool:IsA("Tool") and tool:FindFirstChild("Ammo") then 
+            return tool 
+        end
+    end
+end
+utility.rapid = function(tool)
+    pcall(function() tool:Activate() end)
+end
+
+getgenv().is_firing = false
+
+-- Input handling for spam activate
+UserInputService.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        local gun = utility.get_gun()
+        if RapidFireEnabled and gun and not getgenv().is_firing then
+            getgenv().is_firing = true
+            task.spawn(function()
+                while getgenv().is_firing do
+                    utility.rapid(gun)
+                    task.wait(0.01)
+                end
+            end)
+        end
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        getgenv().is_firing = false
+    end
+end)
+
+-- Hook cooldown upvalues
+RunService.RenderStepped:Connect(function()
+    local char = LocalPlayer.Character
+    if not char then return end
+    local tool = char:FindFirstChildOfClass("Tool")
+    if tool and tool:FindFirstChild("GunScript") then
+        for _, connection in ipairs(getconnections(tool.Activated)) do
+            local func = connection.Function
+            if func then
+                local funcInfo = debug.getinfo(func)
+                for i = 1, funcInfo.nups do
+                    local c, n = debug.getupvalue(func, i)
+                    if type(c) == "number" then
+                        if not originalCooldowns[i] then
+                            originalCooldowns[i] = c
+                        end
+                        debug.setupvalue(func, i, RapidFireEnabled and 0.00000000000000000001 or originalCooldowns[i])
+                    end
+                end
+            end
+        end
+    end
+end)
 -- Auto stomp loop
 local stompConn
 local function toggleStomp(state)
@@ -667,14 +730,16 @@ shootSec:toggle({
     seperator = true,
     callback = toggleStomp
 })
--- MT Support Check
-local mtSupport = true
-pcall(function()
-    local mt = getrawmetatable(game)
-    setreadonly(mt, false)
-    setreadonly(mt, true)
-end)
-
+shootSec:toggle({
+    name = "Rapid Fire",
+    seperator = true,
+    callback = function(v)
+        RapidFireEnabled = v
+        if not v and getgenv().is_firing then
+            getgenv().is_firing = false
+        end
+    end
+})
 -- Silent Aim Vars
 local silentAimEnabled = false
 local silentPrediction = 0
@@ -782,39 +847,36 @@ local function getClosestTarget()
     return closest
 end
 
--- Hook metatable
-if mtSupport then
-    local oldIndex
-    local mouse = LocalPlayer:GetMouse()
-    local mt = getrawmetatable(game)
-    setreadonly(mt, false)
-    oldIndex = mt.__index
-    mt.__index = newcclosure(function(self, idx)
-        if silentAimEnabled and self == mouse and (idx == "Hit" or idx == "Target") and lockedTarget then
-            local char = lockedTarget.Character
-            if not char then return oldIndex(self, idx) end
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if not hum or hum.Health <= 0 then return oldIndex(self, idx) end
-            local isTargetFreefall = hum:GetState() == Enum.HumanoidStateType.Freefall
-            local localChar = LocalPlayer.Character
-            local localHum = localChar and localChar:FindFirstChildOfClass("Humanoid")
-            local isLocalFreefall = localHum and localHum:GetState() == Enum.HumanoidStateType.Freefall or false
-            local freefall = isTargetFreefall or isLocalFreefall
-            local currentHitPart = (freefall and useAirPart) and silentAirPart or silentHitPart
-            local partName = currentHitPart == "Torso" and "UpperTorso" or currentHitPart
-            local targetPart = char:FindFirstChild(partName)
-            if not targetPart then return oldIndex(self, idx) end
-            local root = char:FindFirstChild("HumanoidRootPart")
-            if not root then return oldIndex(self, idx) end
-            local pred = silentPrediction
-            local predPos = targetPart.Position + root.AssemblyLinearVelocity * pred
-            if freefall and silentJumpOffset ~= 0 then predPos = predPos + Vector3.new(0, silentJumpOffset, 0) end
-            if idx == "Hit" then return CFrame.new(predPos) elseif idx == "Target" then return targetPart end
-        end
-        return oldIndex(self, idx)
-    end)
-    setreadonly(mt, true)
-end
+local oldIndex
+local mouse = LocalPlayer:GetMouse()
+local mt = getrawmetatable(game)
+setreadonly(mt, false)
+oldIndex = mt.__index
+mt.__index = newcclosure(function(self, idx)
+	if silentAimEnabled and self == mouse and (idx == "Hit" or idx == "Target") and lockedTarget then
+		local char = lockedTarget.Character
+		if not char then return oldIndex(self, idx) end
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if not hum or hum.Health <= 0 then return oldIndex(self, idx) end
+		local isTargetFreefall = hum:GetState() == Enum.HumanoidStateType.Freefall
+		local localChar = LocalPlayer.Character
+		local localHum = localChar and localChar:FindFirstChildOfClass("Humanoid")
+		local isLocalFreefall = localHum and localHum:GetState() == Enum.HumanoidStateType.Freefall or false
+		local freefall = isTargetFreefall or isLocalFreefall
+		local currentHitPart = (freefall and useAirPart) and silentAirPart or silentHitPart
+		local partName = currentHitPart == "Torso" and "UpperTorso" or currentHitPart
+		local targetPart = char:FindFirstChild(partName)
+		if not targetPart then return oldIndex(self, idx) end
+		local root = char:FindFirstChild("HumanoidRootPart")
+		if not root then return oldIndex(self, idx) end
+		local pred = silentPrediction
+		local predPos = targetPart.Position + root.AssemblyLinearVelocity * pred
+		if freefall and silentJumpOffset ~= 0 then predPos = predPos + Vector3.new(0, silentJumpOffset, 0) end
+		if idx == "Hit" then return CFrame.new(predPos) elseif idx == "Target" then return targetPart end
+	end
+	return oldIndex(self, idx)
+end)
+setreadonly(mt, true)
 
 -- Update loop
 RunService.Heartbeat:Connect(function()
@@ -957,24 +1019,20 @@ local rightCol2 = page2:column({})
 local rightColtrig = triggerandsilent:column({})
 local silentSec = leftCol2:section({name = "Silent Aim", default = true})
 
-if not mtSupport then
-    silentSec:label({name = "Your executor does not support Silent Aim"})
-else
-    local silentT = silentSec:toggle({name = "Silent Aim", seperator = true, callback = function(v) silentAimEnabled = v if not v then lockedTarget = nil end end})
-    local silentS = silentT:settings({})
-    silentS:keybind({name = "Toggle Key", callback = function() silentAimEnabled = not silentAimEnabled if not silentAimEnabled then lockedTarget = nil end end})
-    silentS:toggle({name = "Check Team", callback = function(v) silentTeamCheck = v end})
-    silentS:toggle({name = "Check Wall", callback = function(v) silentWallCheck = v end})
-    silentS:textbox({name = "Prediction", default = "0", numeric = true, callback = function(v) local num = tonumber(v) if num and num >= 0 and num <= 0.2 then silentPrediction = num end end})
-    silentS:dropdown({name = "Hit Part", items = {"Head", "HumanoidRootPart", "UpperTorso", "LowerTorso", "Torso"}, default = "Head", callback = function(v) silentHitPart = v end})
-    silentS:toggle({name = "FOV Circle", callback = function(v) silentFOVEnabled = v silentFOVCircle.Visible = v silentOutlineCircle.Visible = v end})
-    silentS:colorpicker({name = "FOV Color", callback = function(c) silentFOVColor = c silentFOVCircle.Color = c end})
-    silentS:colorpicker({name = "Outline Color", callback = function(c) silentOutlineColor = c silentOutlineCircle.Color = c end})
-    silentS:slider({name = "FOV Size", min = 1, max = 1000, default = 100, callback = function(v) silentFOVSize = v silentFOVCircle.Radius = v silentOutlineCircle.Radius = v + 1 end})
-    silentS:textbox({name = "Jump Offset", default = "0", numeric = true, callback = function(v) silentJumpOffset = tonumber(v) or 0 end})
-    silentS:toggle({name = "Use Air Part", callback = function(v) useAirPart = v end})
-    silentS:dropdown({name = "Air Hit Part", items = {"Head", "HumanoidRootPart", "UpperTorso", "LowerTorso", "Torso"}, default = "Head", callback = function(v) silentAirPart = v end})
-end
+local silentT = silentSec:toggle({name = "Silent Aim", seperator = true, callback = function(v) silentAimEnabled = v if not v then lockedTarget = nil end end})
+local silentS = silentT:settings({})
+silentS:keybind({name = "Toggle Key", callback = function() silentAimEnabled = not silentAimEnabled if not silentAimEnabled then lockedTarget = nil end end})
+silentS:toggle({name = "Check Team", callback = function(v) silentTeamCheck = v end})
+silentS:toggle({name = "Check Wall", callback = function(v) silentWallCheck = v end})
+silentS:textbox({name = "Prediction", default = "0", numeric = true, callback = function(v) local num = tonumber(v) if num and num >= 0 and num <= 0.2 then silentPrediction = num end end})
+silentS:dropdown({name = "Hit Part", items = {"Head", "HumanoidRootPart", "UpperTorso", "LowerTorso", "Torso"}, default = "Head", callback = function(v) silentHitPart = v end})
+silentS:toggle({name = "FOV Circle", callback = function(v) silentFOVEnabled = v silentFOVCircle.Visible = v silentOutlineCircle.Visible = v end})
+silentS:colorpicker({name = "FOV Color", callback = function(c) silentFOVColor = c silentFOVCircle.Color = c end})
+silentS:colorpicker({name = "Outline Color", callback = function(c) silentOutlineColor = c silentOutlineCircle.Color = c end})
+silentS:slider({name = "FOV Size", min = 1, max = 1000, default = 100, callback = function(v) silentFOVSize = v silentFOVCircle.Radius = v silentOutlineCircle.Radius = v + 1 end})
+silentS:textbox({name = "Jump Offset", default = "0", numeric = true, callback = function(v) silentJumpOffset = tonumber(v) or 0 end})
+silentS:toggle({name = "Use Air Part", callback = function(v) useAirPart = v end})
+silentS:dropdown({name = "Air Hit Part", items = {"Head", "HumanoidRootPart", "UpperTorso", "LowerTorso", "Torso"}, default = "Head", callback = function(v) silentAirPart = v end})
 
 local triggerSec = rightColtrig:section({name = "Triggerbot", default = true})
 local triggerT = triggerSec:toggle({name = "Triggerbot", seperator = true, callback = function(v) triggerEnabled = v end})
